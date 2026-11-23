@@ -26,7 +26,7 @@ contract L2ToL1MessagePasser_Version_Test is CommonTest {
 /// @notice Tests the `receive` function of the `L2ToL1MessagePasser` contract.
 contract L2ToL1MessagePasser_Receive_Test is CommonTest {
     /// @notice Tests that receive() initiates withdrawal with default gas limit.
-    function testFuzz_receive_initiatesWithdrawal_succeeds(uint256 _value) external {
+    function skip_testFuzz_receive_initiatesWithdrawal_succeeds(uint256 _value) external {
         skipIfSysFeatureEnabled(Features.CUSTOM_GAS_TOKEN);
 
         uint256 nonce = l2ToL1MessagePasser.messageNonce();
@@ -60,11 +60,9 @@ contract L2ToL1MessagePasser_Burn_Test is CommonTest {
     /// @notice Tests that `burn` succeeds and destroys the ETH held in the contract.
     function testFuzz_burn_succeeds(uint256 _value, address _target, uint256 _gasLimit, bytes memory _data) external {
         skipIfSysFeatureEnabled(Features.CUSTOM_GAS_TOKEN);
-        vm.deal(address(this), _value);
-
-        l2ToL1MessagePasser.initiateWithdrawal{ value: _value }({
-            _target: _target, _gasLimit: _gasLimit, _data: _data
-        });
+        // Withdrawals are disabled, so fund the passer directly (e.g. ETH force-sent via selfdestruct).
+        (_target, _gasLimit, _data);
+        vm.deal(address(l2ToL1MessagePasser), _value);
 
         assertEq(address(l2ToL1MessagePasser).balance, _value);
 
@@ -77,12 +75,71 @@ contract L2ToL1MessagePasser_Burn_Test is CommonTest {
     }
 }
 
+/// @title L2ToL1MessagePasser_WithdrawalsDisabled_Test
+/// @notice Tests that every L2 -> L1 withdrawal path reverts. Agglayer chains settle through the
+///         agglayer, so OP withdrawals can never be proven on L1 and would otherwise burn ETH or
+///         lock tokens on L2.
+contract L2ToL1MessagePasser_WithdrawalsDisabled_Test is CommonTest {
+    /// @notice Tests that `initiateWithdrawal` reverts and leaves the nonce unchanged.
+    function testFuzz_initiateWithdrawal_withdrawalsDisabled_reverts(
+        address _sender,
+        address _target,
+        uint256 _value,
+        uint256 _gasLimit,
+        bytes memory _data
+    )
+        external
+    {
+        uint256 nonce = l2ToL1MessagePasser.messageNonce();
+        vm.deal(_sender, _value);
+
+        vm.prank(_sender);
+        vm.expectRevert("Withdrawals are disabled");
+        l2ToL1MessagePasser.initiateWithdrawal{ value: _value }({
+            _target: _target, _gasLimit: _gasLimit, _data: _data
+        });
+
+        assertEq(l2ToL1MessagePasser.messageNonce(), nonce);
+    }
+
+    /// @notice Tests that sending ETH directly to the passer reverts.
+    function testFuzz_receive_withdrawalsDisabled_reverts(uint256 _value) external {
+        uint256 nonce = l2ToL1MessagePasser.messageNonce();
+        vm.deal(address(this), _value);
+
+        (bool success,) = address(l2ToL1MessagePasser).call{ value: _value }("");
+
+        assertFalse(success);
+        assertEq(address(this).balance, _value);
+        assertEq(l2ToL1MessagePasser.messageNonce(), nonce);
+    }
+
+    /// @notice Tests that ETH withdrawals through the L2StandardBridge revert.
+    function test_bridgeETHTo_withdrawalsDisabled_reverts() external {
+        skipIfSysFeatureEnabled(Features.CUSTOM_GAS_TOKEN);
+        vm.deal(alice, 1 ether);
+
+        vm.prank(alice);
+        vm.expectRevert("Withdrawals are disabled");
+        l2StandardBridge.bridgeETHTo{ value: 1 ether }(bob, 200_000, hex"");
+
+        assertEq(alice.balance, 1 ether);
+    }
+
+    /// @notice Tests that L2 -> L1 messages through the L2CrossDomainMessenger revert.
+    function test_sendMessage_withdrawalsDisabled_reverts() external {
+        vm.prank(alice);
+        vm.expectRevert("Withdrawals are disabled");
+        l2CrossDomainMessenger.sendMessage(bob, hex"1234", 200_000);
+    }
+}
+
 /// @title L2ToL1MessagePasser_InitiateWithdrawal_Test
 /// @notice Tests the `initiateWithdrawal` function of the `L2ToL1MessagePasser` contract.
 contract L2ToL1MessagePasser_InitiateWithdrawal_Test is CommonTest {
     /// @notice Tests that `initiateWithdrawal` succeeds and correctly sets the state of the
     ///         message passer for the withdrawal hash.
-    function testFuzz_initiateWithdrawal_succeeds(
+    function skip_testFuzz_initiateWithdrawal_succeeds(
         address _sender,
         address _target,
         uint256 _value,
@@ -118,7 +175,7 @@ contract L2ToL1MessagePasser_InitiateWithdrawal_Test is CommonTest {
     }
 
     /// @notice Tests that `initiateWithdrawal` succeeds when called by a contract.
-    function testFuzz_initiateWithdrawal_fromContract_succeeds(
+    function skip_testFuzz_initiateWithdrawal_fromContract_succeeds(
         address _target,
         uint256 _gasLimit,
         uint256 _value,
@@ -150,7 +207,7 @@ contract L2ToL1MessagePasser_InitiateWithdrawal_Test is CommonTest {
     }
 
     /// @notice Tests that `initiateWithdrawal` succeeds when called by an EOA.
-    function testFuzz_initiateWithdrawal_fromEOA_succeeds(
+    function skip_testFuzz_initiateWithdrawal_fromEOA_succeeds(
         uint256 _gasLimit,
         address _target,
         uint256 _value,
