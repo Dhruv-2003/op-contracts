@@ -53,7 +53,7 @@ contract L2ToL1MessagePasser is ISemver {
 
     /// @custom:semver 1.2.0
     function version() public pure virtual returns (string memory) {
-        return "1.2.0";
+        return "1.2.0-agglayer";
     }
 
     /// @notice Allows users to withdraw ETH by sending directly to this contract.
@@ -76,6 +76,10 @@ contract L2ToL1MessagePasser is ISemver {
     /// @param _gasLimit Minimum gas limit for executing the message on L1.
     /// @param _data     Data to forward to L1 target.
     function initiateWithdrawal(address _target, uint256 _gasLimit, bytes memory _data) public payable virtual {
+        // Disabling withdrawals: the OP L2 -> L1 path is not provable on agglayer chains, so a
+        // withdrawal would burn ETH or lock tokens on L2 with no way to claim them on L1.
+        require(false, "Withdrawals are disabled");
+
         bytes32 withdrawalHash = Hashing.hashWithdrawal(
             Types.WithdrawalTransaction({
                 nonce: messageNonce(),
